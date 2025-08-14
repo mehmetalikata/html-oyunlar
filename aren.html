@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Çocuk Oyunu – Çoklu Kategori (Rastgele Kategori Sorusu)</title>
+<style>
+  :root{ --bg:#0f172a; --text:#e5e7eb; --muted:#9ca3af; --accent:#22c55e; --wrong:#ef4444; }
+  *{box-sizing:border-box} html,body{height:100%}
+  body{ margin:0; font-family:system-ui,sans-serif; color:var(--text);
+        background: radial-gradient(1200px 800px at 10% 10%, #0b1222 0%, var(--bg) 40%, #0b1222 100%);
+        display:grid; place-items:center; }
+  .app{ width:min(900px,94vw); background:rgba(255,255,255,.03);
+        border:1px solid rgba(255,255,255,.08); border-radius:18px; padding:18px;
+        box-shadow:0 20px 60px rgba(0,0,0,.35); backdrop-filter: blur(6px); }
+  .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+  .header{justify-content:space-between} h1{font-size:22px; margin:0 0 6px 0}
+  .stats{display:flex; gap:10px}
+  .badge{padding:6px 10px; border-radius:999px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); font-weight:700}
+  .controls{display:flex; gap:8px; flex-wrap:wrap}
+  .select{ padding:8px 10px; border-radius:10px; border:1px solid rgba(255,255,255,.14);
+           background: rgba(255,255,255,.06); color:var(--text); font-weight:600 }
+  .btn{padding:10px 14px; border-radius:12px; border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.06); color:var(--text); font-weight:700; cursor:pointer}
+  .btn.ghost{background:transparent}
+  .hint{color:var(--muted); margin:10px 0 12px}
+  .grid{display:grid; grid-template-columns:repeat(2,1fr); gap:14px}
+  @media (min-width:700px){ .grid{grid-template-columns:repeat(4,1fr)} }
+  .tile{ aspect-ratio:1/1; border-radius:16px; border:2px solid rgba(255,255,255,.08);
+         background:rgba(255,255,255,.04); box-shadow:0 8px 22px rgba(0,0,0,.28);
+         display:grid; place-items:center; cursor:pointer;
+         transition:.12s transform,.12s box-shadow,.12s border-color,.12s filter,.12s outline-color,.12s background }
+  .tile:active{transform:scale(.98)}
+  .tile:hover{box-shadow:0 10px 26px rgba(0,0,0,.34); border-color:rgba(255,255,255,.16)}
+  .shape{width:68%; height:68%} .emoji{font-size:56px; line-height:1}
+  .footer{margin-top:14px; display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap}
+  .msg{font-weight:800; min-height:24px}
+</style>
+</head>
+<body>
+<main class="app" role="main" aria-live="polite">
+  <div class="row header">
+    <div>
+      <h1>🧠 Çoklu Kategori Oyunu</h1>
+      <div class="hint" id="hint">Bir seçenek belirle ve başla.</div>
+    </div>
+    <div class="stats">
+      <div class="badge">Puan: <span id="score">0</span></div>
+      <div class="badge">Tur: <span id="round">1</span></div>
+    </div>
+  </div>
+
+  <div class="row controls" aria-label="Oyun kontrolleri">
+    <label> Soru Tipi:
+      <select id="mode" class="select" aria-label="Soru tipi">
+        <option value="color">🎨 Renk farkı</option>
+        <option value="shape">🔷 Şekil bulma</option>
+        <option value="transport">🚗 Taşıt bulma</option>
+        <option value="animal">🐾 Hayvan bulma</option>
+        <option value="fruit">🍎 Meyve bulma</option>
+        <option value="ball">⚽ Top türü bulma</option>
+        <option value="category">❓ Kategori sorusu (rastgele)</option>
+        <option value="random">🎲 Rastgele</option>
+      </select>
+    </label>
+    <button id="voice" class="btn" aria-pressed="false">🔇 Ses Kapalı</button>
+    <button id="restart" class="btn">Sıfırla</button>
+  </div>
+
+  <section id="grid" class="grid" aria-label="Cevap seçenekleri"></section>
+
+  <div class="footer">
+    <div id="message" class="msg"></div>
+    <div class="row">
+      <button id="prevQ" class="btn ghost">← Önceki</button>
+      <button id="nextQ" class="btn ghost">Sonraki →</button>
+    </div>
+  </div>
+
+  <!-- Ses efektleri -->
+  <audio id="sCorrect" src="https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg"></audio>
+  <audio id="sWrong"   src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg"></audio>
+</main>
+
+<script>
+/* --------- Veri bankası --------- */
+const COLORS = ['red','crimson','orangered','tomato','salmon','deeppink','hotpink','magenta','fuchsia','orchid','blueviolet','purple','indigo','blue','dodgerblue','deepskyblue','skyblue','teal','turquoise','lightseagreen','springgreen','limegreen','green','lawngreen','yellowgreen','gold','orange','khaki','yellow','sandybrown','peru','chocolate','sienna','brown','coral','plum','violet','slateblue','royalblue','steelblue','cadetblue','mediumseagreen','seagreen','forestgreen','darkkhaki','goldenrod','darkcyan','mediumturquoise','lightgreen','chartreuse','tan'];
+
+const SHAPES = [
+  { key:'daire',  label:'daire',  svg:'<svg viewBox="0 0 100 100" class="shape" aria-hidden="true"><circle cx="50" cy="50" r="40" fill="currentColor"/></svg>'},
+  { key:'kare',   label:'kare',   svg:'<svg viewBox="0 0 100 100" class="shape" aria-hidden="true"><rect x="18" y="18" width="64" height="64" rx="8" ry="8" fill="currentColor"/></svg>'},
+  { key:'üçgen',  label:'üçgen',  svg:'<svg viewBox="0 0 100 100" class="shape" aria-hidden="true"><polygon points="50,14 90,86 10,86" fill="currentColor"/></svg>'},
+  { key:'yıldız', label:'yıldız', svg:'<svg viewBox="0 0 100 100" class="shape" aria-hidden="true"><polygon points="50,10 61,37 90,37 66,54 75,82 50,66 25,82 34,54 10,37 39,37" fill="currentColor"/></svg>'},
+  { key:'beşgen', label:'beşgen', svg:'<svg viewBox="0 0 100 100" class="shape"><polygon points="50,10 90,40 75,90 25,90 10,40" fill="currentColor"/></svg>'},
+  { key:'altıgen',label:'altıgen',svg:'<svg viewBox="0 0 100 100" class="shape"><polygon points="30,10 70,10 90,50 70,90 30,90 10,50" fill="currentColor"/></svg>'}
+];
+
+// Genişletilmiş hayvanlar (30+)
+const ANIMALS = [
+  { key:'kedi', emoji:'🐱' },{ key:'köpek', emoji:'🐶' },{ key:'aslan', emoji:'🦁' },
+  { key:'kaplan', emoji:'🐯' },{ key:'ayı', emoji:'🐻' },{ key:'panda', emoji:'🐼' },
+  { key:'tavşan', emoji:'🐰' },{ key:'fare', emoji:'🐭' },{ key:'zebra', emoji:'🦓' },
+  { key:'fil', emoji:'🐘' },{ key:'zürafa', emoji:'🦒' },{ key:'su aygırı', emoji:'🦛' },
+  { key:'gergedan', emoji:'🦏' },{ key:'inek', emoji:'🐮' },{ key:'koyun', emoji:'🐑' },
+  { key:'keçi', emoji:'🐐' },{ key:'domuz', emoji:'🐷' },{ key:'at', emoji:'🐴' },
+  { key:'kaplumbağa', emoji:'🐢' },{ key:'kurbağa', emoji:'🐸' },{ key:'ördek', emoji:'🦆' },
+  { key:'tavuk', emoji:'🐔' },{ key:'horoz', emoji:'🐓' },{ key:'kuş', emoji:'🐦' },
+  { key:'baykuş', emoji:'🦉' },{ key:'kartal', emoji:'🦅' },{ key:'balık', emoji:'🐟' },
+  { key:'yunus', emoji:'🐬' },{ key:'köpekbalığı', emoji:'🦈' },{ key:'penguen', emoji:'🐧' }
+];
+
+// Meyveler (emoji)
+const FRUITS = [
+  { key:'elma', emoji:'🍎' },{ key:'yeşil elma', emoji:'🍏' },{ key:'armut', emoji:'🍐' },
+  { key:'şeftali', emoji:'🍑' },{ key:'üzüm', emoji:'🍇' },
+  { key:'çilek', emoji:'🍓' },{ key:'kiraz', emoji:'🍒' },{ key:'portakal', emoji:'🍊' },
+  { key:'mandalina', emoji:'🍊' },{ key:'muz', emoji:'🍌' },{ key:'ananas', emoji:'🍍' },
+  { key:'kivi', emoji:'🥝' },{ key:'karpuz', emoji:'🍉' },{ key:'kavun', emoji:'🍈' },
+  { key:'limon', emoji:'🍋' },{ key:'mango', emoji:'🥭' } /* yedek */
+];
+
+// Top çeşitleri (emoji + ad)
+const BALLS = [
+  { key:'futbol topu', emoji:'⚽' },
+  { key:'basketbol topu', emoji:'🏀' },
+  { key:'voleybol topu', emoji:'🏐' },
+  { key:'tenis topu', emoji:'🎾' },
+  { key:'beyzbol topu', emoji:'⚾' },
+  { key:'ragbi topu', emoji:'🏉' },
+  { key:'bowling topu', emoji:'🎳' },
+  { key:'bilardo topu', emoji:'🎱' }
+];
+
+/* --------- Elemanlar & yardımcılar --------- */
+const el = (q)=>document.querySelector(q);
+const grid = el('#grid'), scoreEl = el('#score'), roundEl = el('#round'), hintEl = el('#hint'), msgEl = el('#message');
+const modeSel = el('#mode'), voiceBtn = el('#voice'), restartBtn = el('#restart');
+const sCorrect = el('#sCorrect'), sWrong = el('#sWrong');
+const prevQ = el('#prevQ'), nextQ = el('#nextQ');
+
+const randInt = (n)=>Math.floor(Math.random()*n);
+const shuffle = (a)=>{ for(let i=a.length-1;i>0;i--){const j=randInt(i+1); [a[i],a[j]]=[a[j],a[i]] } return a; };
+const pick = (arr, n=1)=>shuffle([...arr]).slice(0,n);
+
+/* --- Türkçe ek uyumu: -DIr (d/t + ı/i/u/ü) --- */
+const VOICELESS_TR = new Set(['ç','f','h','k','p','s','ş','t']);
+function trCopula(word){
+  const w = (word || '').toLocaleLowerCase('tr');
+  const letters = Array.from(w);
+  const last = letters[letters.length - 1] || '';
+  const vowels = ['a','e','ı','i','o','ö','u','ü'];
+  let lastVowel = 'a';
+  for (let i = letters.length - 1; i >= 0; i--) {
+    if (vowels.includes(letters[i])) { lastVowel = letters[i]; break; }
+  }
+  const tail =
+    (lastVowel === 'a' || lastVowel === 'ı') ? 'ır' :
+    (lastVowel === 'e' || lastVowel === 'i') ? 'ir' :
+    (lastVowel === 'o' || lastVowel === 'u') ? 'ur' : 'ür';
+  const start = VOICELESS_TR.has(last) ? 't' : 'd';
+  return word + start + tail;
+}
+
+/* --------- Ses --------- */
+let voiceOn = false, trVoice=null;
+function pickTRVoice(){ const vs = speechSynthesis.getVoices(); return vs.find(v=>v.lang?.toLowerCase().startsWith('tr')) || vs[0] || null; }
+function speak(t){ if(!voiceOn || !('speechSynthesis' in window)) return; const u=new SpeechSynthesisUtterance(t); if(trVoice) u.voice=trVoice; u.lang=trVoice?.lang||'tr-TR'; u.rate=.95; u.pitch=1; speechSynthesis.cancel(); speechSynthesis.speak(u); }
+if('speechSynthesis' in window){ trVoice=pickTRVoice(); speechSynthesis.onvoiceschanged=()=>{ trVoice=pickTRVoice(); }; }
+voiceBtn.addEventListener('click',()=>{ voiceOn=!voiceOn; voiceBtn.textContent=voiceOn? '🔊 Ses Açık' : '🔇 Ses Kapalı'; voiceBtn.setAttribute('aria-pressed', String(voiceOn)); });
+
+/* --------- Oyun durumu --------- */
+let score=0, round=1, lock=false;
+let historyList=[]; let cursor=-1;
+
+/* --------- Görsel kutular --------- */
+function tileButton(){ const b=document.createElement('button'); b.className='tile'; return b; }
+function colorTile(color){ const b=tileButton(); b.style.background=color; b.style.color='transparent'; return b; }
+function shapeTile(shape){ const b=tileButton(); b.style.color='var(--text)'; b.innerHTML=shape.svg; return b; }
+function emojiTile(emoji){ const b=tileButton(); b.innerHTML=`<div class="emoji" aria-hidden="true">${emoji}</div>`; return b; }
+
+/* --------- Soru üreticiler --------- */
+function genColor(){
+  const base = COLORS[randInt(COLORS.length)];
+  let odd = base; while(odd===base) odd = COLORS[randInt(COLORS.length)];
+  const correctIndex = randInt(4);
+  const options = Array.from({length:4}, (_,i)=>({view:'color', value: i===correctIndex? odd : base, isCorrect: i===correctIndex}));
+  return { type:'color', prompt:'Farklı renkte olanı bul.', options };
+}
+function genShape(){
+  const options = pick(SHAPES,4);
+  const target = options[randInt(4)];
+  const labeled = options.map(o=>({view:'shape', value:o, isCorrect:o.key===target.key}));
+  return { type:'shape', prompt:`Hangisi ${target.label} şeklidir?`, options:labeled };
+}
+function genTransport(){
+  const TRANSPORTS = BANK.transport;
+  const target = pick(TRANSPORTS,1)[0];
+  const others = pick(TRANSPORTS.filter(t=>t.key!==target.key),3);
+  const options = shuffle([target, ...others]).map(o=>({view:'emoji', value:o.emoji, isCorrect:o.key===target.key}));
+  return { type:'transport', prompt:`Hangisi ${trCopula(target.key)}?`, options };
+}
+function genAnimal(){
+  const AN = BANK.animal;
+  const target = pick(AN,1)[0];
+  const others = pick(AN.filter(a=>a.key!==target.key),3);
+  const options = shuffle([target, ...others]).map(o=>({view:'emoji', value:o.emoji, isCorrect:o.key===target.key}));
+  return { type:'animal', prompt:`Hangisi ${trCopula(target.key)}?`, options };
+}
+function genFruit(){
+  const target = pick(FRUITS,1)[0];
+  const others = pick(FRUITS.filter(f=>f.key!==target.key),3);
+  const options = shuffle([target, ...others]).map(o=>({view:'emoji', value:o.emoji, isCorrect:o.key===target.key}));
+  return { type:'fruit', prompt:`Hangisi ${trCopula(target.key)}?`, options };
+}
+function genBall(){
+  const target = pick(BALLS,1)[0];
+  const others = pick(BALLS.filter(b=>b.key!==target.key),3);
+  const options = shuffle([target, ...others]).map(o=>({view:'emoji', value:o.emoji, isCorrect:o.key===target.key}));
+  return { type:'ball', prompt:`Hangisi ${trCopula(target.key)}?`, options };
+}
+
+/* ---- Kategori sorusu (tamamen rastgele) ---- */
+const BANK = {
+  transport: [{ key:'araba', emoji:'🚗' },{ key:'otobüs', emoji:'🚌' },{ key:'kamyon', emoji:'🚚' },{ key:'tren', emoji:'🚆' },{ key:'uçak', emoji:'✈️' },{ key:'gemi', emoji:'🚢' },{ key:'helikopter', emoji:'🚁' },{ key:'bisiklet', emoji:'🚲' },{ key:'motosiklet', emoji:'🏍️' },{ key:'tramvay', emoji:'🚊' }],
+  animal: ANIMALS,
+  shape: SHAPES,
+  fruit: FRUITS,
+  ball: BALLS
+};
+function genCategoryRandom(){
+  // Hedef kategoriyi rastgele seç
+  const kinds = Object.keys(BANK); // transport, animal, shape, fruit, ball
+  const targetKind = kinds[randInt(kinds.length)];
+  const source = BANK[targetKind];
+
+  // 1 doğru hedef
+  const correct = pick(source,1)[0];
+
+  // 3 yanlış: hedef dışı kategorilerden, her yanlış için rastgele bir kategori seç
+  const wrongs = [];
+  const otherKinds = kinds.filter(k=>k!==targetKind);
+  for(let i=0;i<3;i++){
+    const k = otherKinds[randInt(otherKinds.length)];
+    const pool = BANK[k];
+    wrongs.push({ kind:k, item: pick(pool,1)[0] });
+  }
+
+  // renderlanacak dizi
+  const options = [];
+  // doğru
+  if(targetKind==='shape') options.push({view:'shape', value:correct, isCorrect:true});
+  else options.push({view:'emoji', value:correct.emoji, isCorrect:true});
+  // yanlışlar
+  wrongs.forEach(w=>{
+    if(w.kind==='shape') options.push({view:'shape', value:w.item, isCorrect:false});
+    else options.push({view:'emoji', value:w.item.emoji, isCorrect:false});
+  });
+  shuffle(options);
+
+  const promptMap = {
+    transport:'Hangisi bir taşıttır?',
+    animal:'Hangisi bir hayvandır?',
+    shape:'Hangisi bir şekildir?',
+    fruit:'Hangisi bir meyvedir?',
+    ball:'Hangisi bir toptur?'
+  };
+  return { type:'category', targetKind, prompt: promptMap[targetKind], options };
+}
+
+/* --------- Rastgele --------- */
+function genRandom(){
+  const list = ['color','shape','transport','animal','fruit','ball','category'];
+  const m = list[randInt(list.length)];
+  if(m==='color') return genColor();
+  if(m==='shape') return genShape();
+  if(m==='transport') return genTransport();
+  if(m==='animal') return genAnimal();
+  if(m==='fruit') return genFruit();
+  if(m==='ball') return genBall();
+  return genCategoryRandom();
+}
+
+/* --------- Render & Etkileşim --------- */
+function renderQuestion(q){
+  lock = false;
+  hintEl.textContent = q.prompt; msgEl.textContent = ''; grid.innerHTML = '';
+  q.options.forEach(opt=>{
+    let b;
+    if(opt.view==='color') b = colorTile(opt.value);
+    else if(opt.view==='shape') b = shapeTile(opt.value);
+    else b = emojiTile(opt.value);
+    b.addEventListener('click', ()=>choose(opt, b));
+    grid.appendChild(b);
+  });
+  if(voiceOn) speak(q.prompt);
+}
+
+function choose(opt, btn){
+  if(lock) return;
+  if(opt.isCorrect){
+    lock = true; score++; round++; scoreEl.textContent=score; roundEl.textContent=round;
+    btn.style.outline='4px solid var(--accent)'; btn.style.filter='saturate(1.25)';
+    msgEl.style.color='var(--accent)'; msgEl.textContent='✅ Doğru!';
+    sCorrect.currentTime=0; sCorrect.play();
+    if(voiceOn) speak('Bravo! Doğru. Yeni tur.');
+    setTimeout(()=>makeQuestion(false, true), 700);
+  }else{
+    msgEl.style.color='var(--wrong)'; msgEl.textContent='🔁 Tekrar dene!';
+    sWrong.currentTime=0; sWrong.play();
+    if(voiceOn) speak('Bu değil, tekrar dene.');
+    btn.animate([{transform:'translateX(0)'},{transform:'translateX(-6px)'},{transform:'translateX(6px)'},{transform:'translateX(0)'}],{duration:250});
+  }
+}
+
+/* --------- Akış / Geçmiş --------- */
+function buildQuestion(){
+  const m = modeSel.value;
+  if(m==='color') return genColor();
+  if(m==='shape') return genShape();
+  if(m==='transport') return genTransport();
+  if(m==='animal') return genAnimal();
+  if(m==='fruit') return genFruit();
+  if(m==='ball') return genBall();
+  if(m==='category') return genCategoryRandom();
+  return genRandom();
+}
+
+function makeQuestion(modeChanged=false, fromAnswer=false){
+  const q = buildQuestion();
+
+  if (modeChanged) {
+    historyList = [];
+    cursor = -1;
+    round = 1;
+    roundEl.textContent = round;
+  } else if (!fromAnswer) {
+    round++;
+    roundEl.textContent = round;
+  }
+
+  historyList.push(q); cursor = historyList.length - 1;
+  renderQuestion(q);
+}
+
+function showCursor(){
+  if(cursor<0 || cursor>=historyList.length) return;
+  renderQuestion(historyList[cursor]);
+}
+
+/* --------- UI bağla --------- */
+modeSel.addEventListener('change', ()=>{ makeQuestion(true); });
+prevQ.addEventListener('click', ()=>{ if(cursor>0){ cursor--; showCursor(); }});
+nextQ.addEventListener('click', ()=>{ if(cursor<historyList.length-1){ cursor++; showCursor(); }});
+
+/* --------- Sıfırla --------- */
+restartBtn.addEventListener('click', ()=>{
+  score=0; round=1; lock=false; scoreEl.textContent=score; roundEl.textContent=round;
+  msgEl.textContent='Oyun sıfırlandı.'; hintEl.textContent='Hazırsan başla.';
+  if(voiceOn) speak('Oyun sıfırlandı. Hazırsan başla.');
+  historyList=[]; cursor=-1; makeQuestion(true);
+});
+
+/* --------- Başlat --------- */
+makeQuestion(true);
+</script>
+</body>
+</html>

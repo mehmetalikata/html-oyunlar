@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>6 Sütun Kart Oyunu</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #111832;
+      --panel-2: #0e152b;
+      --text: #e9eefb;
+      --muted: #a5b1d6;
+      --accent: #5b9cff;
+      --good: #22c55e;
+      --bad: #ef4444;
+      --warn: #f59e0b;
+      --card: #f8fafc;
+      --card-red: #fef2f2;
+      --shadow: 0 8px 30px rgba(0,0,0,.35);
+      --radius: 16px;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; background: radial-gradient(1200px 600px at 70% -10%, #1a254d 0%, #0b1020 60%), var(--bg);
+      color: var(--text); font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
+      display: grid; place-items: start center; padding: 24px;
+    }
+    .app { width: min(1200px, 100%); }
+    header { display:flex; gap:16px; align-items:center; margin-bottom: 16px; }
+    h1 { font-size: clamp(20px, 3vw, 28px); margin: 0; letter-spacing: .3px; }
+    .controls {
+      display:flex; flex-wrap: wrap; gap:8px; margin-left:auto;
+    }
+    button, .btn {
+      background: linear-gradient(180deg, #1b264d, #141c39);
+      border: 1px solid #2b3a78; color: #cfe1ff; padding: 10px 14px; border-radius: 12px; cursor: pointer;
+      box-shadow: var(--shadow); transition: transform .06s ease, background .2s ease, border-color .2s;
+      font-weight: 600; letter-spacing: .2px;
+    }
+    button:hover { transform: translateY(-1px); background: linear-gradient(180deg, #21306a, #16204a); border-color: #3a57aa; }
+    button:disabled { opacity:.6; cursor:not-allowed; transform:none; }
+    .secondary { background: linear-gradient(180deg, #0f162f, #0c1225); border-color:#25305a; color:#d9dff0; }
+    .danger { border-color:#7a1d1d; color:#ffd6d6; background: linear-gradient(180deg, #3b0f0f, #220909); }
+
+    .topbar {
+      display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:12px; margin-bottom: 16px;
+    }
+    .panel {
+      border-radius: var(--radius); background: linear-gradient(180deg, var(--panel), var(--panel-2));
+      border: 1px solid rgba(255,255,255,.07); box-shadow: var(--shadow); padding:14px;
+    }
+    .stats { display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+    .stat { display:flex; gap:8px; align-items:center; padding:8px 10px; background: rgba(255,255,255,.04); border-radius:10px; }
+    .led { width:10px; height:10px; border-radius:999px; }
+    .led.green { background: var(--good); }
+    .led.red { background: var(--bad); }
+
+    .grid { display:grid; grid-template-columns: repeat(6, 1fr); gap:12px; }
+    .col { display:flex; flex-direction:column; gap:10px; min-height: 280px; }
+    .col-header {
+      display:flex; align-items:center; justify-content:space-between; gap:8px; font-weight:700; color:#dbe5ff;
+    }
+    .col-body {
+      min-height: 220px; display:block; position:relative; padding:8px; border-radius:12px; overflow:visible;
+      background: repeating-linear-gradient( 135deg, rgba(255,255,255,.04), rgba(255,255,255,.04) 10px, rgba(255,255,255,.02) 10px, rgba(255,255,255,.02) 20px );
+      border: 1px dashed rgba(255,255,255,.08);
+    }
+    /* Solitaire benzeri üst üste dizilim */
+    .col-body .card { margin-top: -78px; }
+    .col-body .card:first-child { margin-top: 0; }
+
+    .col.paused .col-body { opacity:.5; }
+
+    .card {
+      width: 74px; height: 104px; background: var(--card); color:#111; border-radius:12px; border:1px solid #e6eaf1;
+      box-shadow: 0 6px 14px rgba(0,0,0,.22); display:grid; grid-template-rows: 1fr auto 1fr; place-items:center; padding:6px; position: relative;
+    }
+    .card.red { background: var(--card-red); color:#9a1919; border-color:#f2d6d6; }
+    .rank { font-weight:900; font-size: 20px; }
+    .suit { font-size: 18px; opacity:.85; }
+    .tiny { position:absolute; left:6px; top:6px; font-size:12px; opacity:.75; }
+
+    .deckbox { display:flex; align-items:center; gap:12px; }
+    .deck {
+      width: 74px; height: 104px; border-radius:12px; border:1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.06);
+      display:grid; place-items:center; font-weight:800; color:#cfe1ff; letter-spacing:.5px;
+    }
+
+    .options { display:flex; flex-wrap:wrap; gap:8px; }
+    .option { padding:10px 12px; border-radius:10px; border:1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.04); cursor:pointer; }
+    .option:hover { background: rgba(255,255,255,.08); }
+
+    .log { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12.5px; color:#cbd5e1; max-height:180px; overflow:auto; }
+    .muted { color: var(--muted); }
+    .hidden { display:none !important; }
+    .flex { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .spacer { flex: 1 1 auto; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>6 Sütun Kart Oyunu</h1>
+      <div class="controls">
+        <button id="newGame">Yeni Oyun</button>
+        <button id="dealOne">Sıradaki Kartı Dağıt</button>
+        <button id="autoDeal" class="secondary">Hızlı Dağıt (kontrollü)</button>
+        <button id="undoBtn" class="secondary">Geri Al</button>
+        <button id="resetBtn" class="danger">Sıfırla</button>
+      </div>
+    </header>
+
+    <div class="topbar">
+      <div class="panel">
+        <div class="deckbox">
+          <div class="deck" id="deckViz">DESTE</div>
+          <div>
+            <div class="stats">
+              <div class="stat"><span class="muted">Kart sayısı:</span><strong id="deckCount">52</strong></div>
+              <div class="stat"><span class="muted">Aktif sütun:</span><strong id="activeCol">1</strong></div>
+              <div class="stat"><span class="muted">Boşalan sütunlar:</span><strong id="emptied">0</strong></div>
+            </div>
+            <div class="muted" style="margin-top:6px">Amaç: Tüm sütunları boşaltmak. Bir sütun boşaldıysa bir daha kart verilmez.</div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="flex">
+          <div><strong>Seçenekler (aynı anda birden çok üçlü uyar ise oyuncu karar verir)</strong></div>
+          <div class="spacer"></div>
+          <label class="flex"><input type="checkbox" id="recheckSame" checked> <span class="muted">Üçlü aldıktan sonra aynı sütunu tekrar kontrol et</span></label>
+        </div>
+        <div id="options" class="options" style="margin-top:10px"></div>
+      </div>
+      <div class="panel">
+        <div><strong>Durum</strong></div>
+        <div id="status" class="muted" style="margin-top:6px">Hazır.</div>
+      </div>
+      <div class="panel">
+        <div><strong>Hamle Kaydı</strong></div>
+        <div id="log" class="log"></div>
+      </div>
+    </div>
+
+    <div class="grid" id="grid"></div>
+  </div>
+
+  <script>
+  // --- Kart yardımcıları ---
+  const SUITS = ["♠", "♥", "♦", "♣"]; // maça, kupa, karo, sinek
+  const RANKS = ["A","2","3","4","5","6","7","8","9","10","J","Q","K"]; // As, ..., Papaz
+  const FACE_VALUE = { "J":10, "Q":10, "K":10 };
+  function cardValue(rank){ if(rank==="A") return 1; if(FACE_VALUE[rank]) return FACE_VALUE[rank]; return parseInt(rank,10); }
+  function makeDeck(){
+    const deck=[];
+    for(const s of SUITS){
+      for(const r of RANKS){ deck.push({suit:s, rank:r, val: cardValue(r)}); }
+    }
+    // Fisher-Yates karıştır
+    for(let i=deck.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+    return deck;
+  }
+  function cardEl(card){
+    const el = document.createElement('div');
+    el.className = 'card '+((card.suit==="♥"||card.suit==="♦")? 'red':'' );
+    el.innerHTML = `<div class="tiny">${card.rank}</div><div class="rank">${rankLabel(card.rank)}</div><div class="suit">${card.suit}</div>`;
+    return el;
+  }
+  function rankLabel(r){
+    // Türkçe kısaltma
+    if(r==="A") return "As";
+    if(r==="J") return "Vale";
+    if(r==="Q") return "Kız";
+    if(r==="K") return "Papaz";
+    return r;
+  }
+
+  // --- Oyun durumu ---
+  const COLS = 6;
+  let deck = [];
+  let columns = Array.from({length:COLS}, ()=>[]);
+  let activeMap = Array.from({length:COLS}, ()=>true); // sütun boşalınca kalıcı olarak false
+  let dealIndex = 0; // sıradaki sütun işaretçisi
+  let emptiedCount = 0;
+  let recheckSame = true;
+  let history = []; // geri al için
+
+  // --- UI referansları ---
+  const grid = document.getElementById('grid');
+  const deckCountEl = document.getElementById('deckCount');
+  const activeColEl = document.getElementById('activeCol');
+  const emptiedEl = document.getElementById('emptied');
+  const statusEl = document.getElementById('status');
+  const optionsEl = document.getElementById('options');
+  const logEl = document.getElementById('log');
+
+  // --- Başlat ---
+  initBoard();
+  newGame();
+
+  function initBoard(){
+    grid.innerHTML = '';
+    for(let i=0;i<COLS;i++){
+      const col = document.createElement('div'); col.className='panel col'; col.dataset.idx=i;
+      col.innerHTML = `<div class="col-header"><span>Sütun ${i+1}</span><span class="muted" id="colStat-${i}">Aktif</span></div><div id="col-${i}" class="col-body"></div>`;
+      grid.appendChild(col);
+    }
+  }
+
+  function newGame(){
+    deck = makeDeck();
+    columns = Array.from({length:COLS}, ()=>[]);
+    activeMap = Array.from({length:COLS}, ()=>true);
+    dealIndex = 0; emptiedCount = 0; history=[]; optionsEl.innerHTML='';
+    updateUI();
+    setStatus('Yeni oyun. "Sıradaki Kartı Dağıt" ile başlayın.');
+    logEl.innerHTML='';
+  }
+
+  // --- Yardımcılar ---
+  function setStatus(msg){ statusEl.textContent = msg; }
+  function pushLog(msg){ const t = new Date().toLocaleTimeString(); logEl.innerHTML = `[${t}] ${msg}<br>` + logEl.innerHTML; }
+  function updateUI(){
+    deckCountEl.textContent = deck.length;
+    activeColEl.textContent = (nextActiveIndex(dealIndex)+1);
+    emptiedEl.textContent = emptiedCount;
+    for(let i=0;i<COLS;i++){
+      const wrap = document.getElementById(`col-${i}`); wrap.innerHTML='';
+      for(const c of columns[i]) wrap.appendChild(cardEl(c));
+      const label = document.getElementById(`colStat-${i}`);
+      const colPanel = wrap.parentElement.parentElement;
+      if(!activeMap[i]){ label.textContent='Boş (pasif)'; colPanel.classList.add('paused'); }
+      else { label.textContent = columns[i].length? 'Aktif' : 'Boş (dağıtılacak)'; colPanel.classList.remove('paused'); }
+    }
+  }
+
+  function nextActiveIndex(from){
+    // sıradaki aktif sütunu bul (dağıtım için). Tüm sütunlar pasifse from döner.
+    if(activeMap.every(a=>!a)) return from;
+    let idx = from;
+    for(let c=0;c< COLS*2; c++){
+      if(activeMap[idx]) return idx;
+      idx = (idx+1)%COLS;
+    }
+    return from;
+  }
+
+  function serializeState(){
+    return JSON.stringify({ deck: deck.map(c=>({s:c.suit,r:c.rank})), columns: columns.map(col=>col.map(c=>({s:c.suit,r:c.rank}))), activeMap:[...activeMap], dealIndex, emptiedCount });
+  }
+  function restoreState(json){
+    const st = JSON.parse(json);
+    deck = st.deck.map(o=>({suit:o.s, rank:o.r, val: cardValue(o.r)}));
+    columns = st.columns.map(col=>col.map(o=>({suit:o.s, rank:o.r, val: cardValue(o.r)})));
+    activeMap = st.activeMap; dealIndex = st.dealIndex; emptiedCount = st.emptiedCount; updateUI();
+  }
+
+  // --- Üçlü kontrolü ---
+  function checkTriples(colIdx){
+    const col = columns[colIdx];
+    const k = col.length;
+    const triples = [];
+    if(k < 3){ // Kullanıcı isteği: k=2 iken bile kontrol yok
+      return triples;
+    }
+    const sum = (i,j,k)=> col[i].val + col[j].val + col[k].val;
+    const pushIf = (idxs, label)=>{
+      const s = sum(...idxs);
+      if(s===10 || s===20 || s===30){
+        const key = idxs.join('-');
+        triples.push({ idxs, sum:s, label });
+      }
+    };
+    // 1) (k-2, k-1, k)
+    pushIf([k-3, k-2, k-1], `Son üçlü (${k-2}, ${k-1}, ${k})`);
+    // 2) (1, k-1, k)
+    if(k>=3) pushIf([0, k-2, k-1], `Baş-son (${1}, ${k-1}, ${k})`);
+    // 3) (1, 2, k)
+    if(k>=3) pushIf([0, 1, k-1], `Baş-baş (${1}, ${2}, ${k})`);
+
+    const uniq = [];
+    const seen = new Set();
+    for(const t of triples){ const key = t.idxs.join(','); if(!seen.has(key)){ seen.add(key); uniq.push(t);} }
+    return uniq;
+  }
+
+  function takeTriple(colIdx, triple){
+    // Tarihçe (undo)
+    history.push(serializeState());
+    const col = columns[colIdx];
+    const [a,b,c] = triple.idxs;
+    const items = [col[a], col[b], col[c]]; // belirtilen sırayla
+    const toRemove = [a,b,c].sort((x,y)=>y-x);
+    for(const idx of toRemove){ col.splice(idx,1); }
+    deck.push(...items);
+    pushLog(`Sütun ${colIdx+1}: ${triple.label} toplam ${triple.sum} ⇒ altına gönderildi (${items.map(x=>x.rank+x.suit).join(' ')})`);
+
+    if(col.length===0 && activeMap[colIdx]){ activeMap[colIdx]=false; emptiedCount++; pushLog(`Sütun ${colIdx+1} boşaldı ve pasifleşti.`); }
+
+    updateUI();
+  }
+
+  function offerOptions(colIdx){
+    const opts = checkTriples(colIdx);
+    optionsEl.innerHTML = '';
+    if(opts.length===0){
+      return false;
+    }
+    setStatus(`Sütun ${colIdx+1} için ${opts.length} seçenek var. Birini seçin.`);
+    opts.forEach((opt, i)=>{
+      const btn = document.createElement('button');
+      const names = opt.idxs.map(ii=>columns[colIdx][ii].rank + columns[colIdx][ii].suit).join(' · ');
+      btn.className='option';
+      btn.textContent = `${opt.label} → [${names}] = ${opt.sum}`;
+      btn.onclick = ()=>{
+        takeTriple(colIdx, opt);
+        updateUI();
+        // Aynı sütunu tekrar kontrol et seçeneği
+        if(recheckSame){ if(offerOptions(colIdx)) return; }
+        // Üçlü alındıktan sonra yeni kart, aynı sütuna değil sıradaki aktif sütuna gitsin
+        dealIndex = nextActiveIndex((colIdx+1)%COLS);
+        updateUI();
+        setStatus('Devam etmek için kart dağıtın.');
+        optionsEl.innerHTML='';
+      };
+      optionsEl.appendChild(btn);
+    });
+    return true;
+  }
+
+  function dealOne(){
+    if(deck.length===0){ setStatus('Deste bitti.'); checkWin(); return; }
+    if(activeMap.every(a=>!a)){ setStatus('Tüm sütunlar pasif. Oyun bitti.'); checkWin(); return; }
+
+    // sıradaki aktif sütunu bul
+    dealIndex = nextActiveIndex(dealIndex);
+    const colIdx = dealIndex;
+    const card = deck.shift();
+    columns[colIdx].push(card);
+    pushLog(`Sütun ${colIdx+1} kart aldı: ${card.rank}${card.suit}`);
+    setStatus(`Sütun ${colIdx+1} yeni kart aldı. Uygun üçlü varsa seçin.`);
+    updateUI();
+
+    // Seçenekleri sun
+    if(!offerOptions(colIdx)){
+      // hiçbir seçenek yoksa sıradaki sütuna geçiş
+      dealIndex = (dealIndex+1)%COLS; // sırayı ilerlet
+      setStatus('Seçenek yok. Sıradaki sütuna geçilecek.');
+    }
+    checkWin();
+  }
+
+  function checkWin(){
+    const done = activeMap.every(a=>!a);
+    if(done){ setStatus('Tebrikler! Tüm sütunlar boşaldı. 🎉'); pushLog('OYUN SONU: Başarı.'); return true; }
+    return false;
+  }
+
+  // --- Hızlı dağıt: duruma göre seçenek yoksa otomatik, varsa dur ---
+  let autoTimer=null;
+  function autoStep(){
+    if(autoTimer) return;
+    autoTimer = setInterval(()=>{
+      if(deck.length===0){ clearInterval(autoTimer); autoTimer=null; setStatus('Deste bitti.'); return; }
+      if(activeMap.every(a=>!a)){ clearInterval(autoTimer); autoTimer=null; setStatus('Tüm sütunlar pasif.'); return; }
+      const before = serializeState();
+      const idxBefore = dealIndex;
+      dealOne();
+      if(optionsEl.children.length>0){ clearInterval(autoTimer); autoTimer=null; setStatus('Seçenek var: birini seçin.'); }
+      if(before === serializeState() && idxBefore===dealIndex){ clearInterval(autoTimer); autoTimer=null; }
+    }, 120);
+  }
+
+  // --- Eventler ---
+  document.getElementById('newGame').onclick = newGame;
+  document.getElementById('dealOne').onclick = dealOne;
+  document.getElementById('autoDeal').onclick = autoStep;
+  document.getElementById('undoBtn').onclick = ()=>{
+    if(history.length===0){ setStatus('Geri alacak hamle yok.'); return; }
+    const snap = history.pop(); restoreState(snap); optionsEl.innerHTML=''; setStatus('Geri alındı.');
+  };
+  document.getElementById('resetBtn').onclick = ()=>{ if(confirm('Oyunu tamamen sıfırlansın mı?')) newGame(); };
+  document.getElementById('recheckSame').onchange = (e)=>{ recheckSame = e.target.checked; };
+  </script>
+</body>
+</html>
